@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Trilha Multiplataforma — A-Frame</title>
+
+  <!-- A-Frame -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <!-- Cenários prontos: preset forest -->
+  <script src="https://unpkg.com/aframe-environment-component@1.5.0/dist/aframe-environment-component.min.js"></script>
+
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: Arial, sans-serif; }
+    #hud {
+      position: fixed; z-index: 20; left: 50%; bottom: 22px; transform: translateX(-50%);
+      width: min(92vw, 760px); padding: 14px 18px; border-radius: 14px;
+      color: #fff; background: rgba(7,18,12,.82); border: 1px solid rgba(255,255,255,.16);
+      backdrop-filter: blur(8px); box-sizing: border-box; text-align: center;
+      opacity: 0; transition: opacity .25s ease; pointer-events: none;
+    }
+    #hud.visible { opacity: 1; }
+    #hudTitle { font-weight: 700; font-size: 18px; margin-bottom: 5px; }
+    #hudText { font-size: 14px; line-height: 1.4; }
+    #intro {
+      position: fixed; z-index: 30; inset: 0; display: grid; place-items: center;
+      background: linear-gradient(rgba(4,12,8,.60), rgba(4,12,8,.78));
+      color: #fff;
+    }
+    .panel {
+      width: min(90vw, 640px); padding: 28px; border-radius: 18px;
+      background: rgba(8,23,14,.88); border: 1px solid rgba(255,255,255,.18);
+      box-shadow: 0 20px 70px rgba(0,0,0,.4); text-align: center;
+    }
+    .panel h1 { margin: 0 0 10px; font-size: 29px; }
+    .panel p { line-height: 1.45; opacity: .92; }
+    .panel button {
+      border: 0; border-radius: 999px; padding: 12px 20px; font-weight: 700; cursor: pointer;
+      background: #d9f99d; color: #173214; font-size: 15px;
+    }
+    #hint {
+      position: fixed; z-index: 25; top: 12px; left: 12px; right: 12px; color: white;
+      text-shadow: 0 1px 3px #000; font-size: 13px; pointer-events: none;
+    }
+  </style>
+
+  <script>
+    // Utilitário de TTS com fallback silencioso.
+    function speakPT(text) {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'pt-BR';
+      u.rate = 1.02;
+      u.pitch = 1.0;
+      const voices = window.speechSynthesis.getVoices();
+      const pt = voices.find(v => /pt-BR/i.test(v.lang)) || voices.find(v => /^pt/i.test(v.lang));
+      if (pt) u.voice = pt;
+      window.speechSynthesis.speak(u);
+    }
+
+    // Componente de proximidade: mostra HUD + fala TTS uma única vez por entrada.
+    AFRAME.registerComponent('proximity-info', {
+      schema: {
+        title: {type: 'string', default: 'Ponto de interesse'},
+        text: {type: 'string', default: ''},
+        distance: {type: 'number', default: 3.2}
+      },
+      init: function () {
+        this.inside = false;
+        this.camera = null;
+      },
+      tick: function () {
+        if (!this.camera) this.camera = document.querySelector('#player');
+        if (!this.camera) return;
+
+        const a = new THREE.Vector3();
+        const b = new THREE.Vector3();
+        this.el.object3D.getWorldPosition(a);
+        this.camera.object3D.getWorldPosition(b);
+        const d = a.distanceTo(b);
+
+        if (d < this.data.distance && !this.inside) {
+          this.inside = true;
+          showHUD(this.data.title, this.data.text);
+          speakPT(this.data.title + '. ' + this.data.text);
+          this.el.emit('proximityenter');
+        }
+        if (d >= this.data.distance + 0.5 && this.inside) {
+          this.inside = false;
+          hideHUD();
+          this.el.emit('proximityleave');
+        }
+      }
+    });
+
+    // Faz entidades interativas reagirem visualmente ao clique.
+    AFRAME.registerComponent('pulse-on-click', {
+      init: function () {
+        this.el.addEventListener('click', () => {
+          this.el.setAttribute('animation__pulse',
+            'property: scale; from: 1 1 1; to: 1.22 1.22 1.22; dur: 180; dir: alternate; loop: 1');
+        });
+      }
+    });
+
+    // NPC flutua levemente para parecer "vivo".
+    AFRAME.registerComponent('npc-breathe', {
+      init: function () {
+        this.baseY = this.el.object3D.position.y;
+      },
+      tick: function (t) {
+        this.el.object3D.position.y = this.baseY + Math.sin(t / 650) * 0.025;
+      }
+    });
+
+    function showHUD(title, text) {
+      document.getElementById('hudTitle').textContent = title;
+      document.getElementById('hudText').textContent = text;
+      document.getElementById('hud').classList.add('visible');
+    }
+    function hideHUD() {
+      document.getElementById('hud').classList.remove('visible');
+    }
+
+    function startExperience() {
+      document.getElementById('intro').style.display = 'none';
+      // "Aquece" a síntese de voz após gesto do usuário, exigência comum dos navegadores.
+      if ('speechSynthesis' in window) {
+        const u = new SpeechSynthesisUtterance('Bem-vindo à trilha multiplataforma.');
+        u.lang = 'pt-BR';
+        u.volume = 0.7;
+        window.speechSynthesis.speak(u);
+      }
+    }
+  </script>
+</head>
+
+<body>
+  <div id="intro">
+    <div class="panel">
+      <h1>Trilha Multiplataforma</h1>
+      <p>
+        Explore uma floresta conceitual sobre <strong>produção de conteúdos multiplataforma</strong>.
+        Aproxime-se dos objetos e personagens para ouvir explicações em voz alta.
+        No computador, use <strong>WASD + mouse</strong>. Em VR, use os controles disponíveis.
+      </p>
+      <button onclick="startExperience()">Entrar na floresta</button>
+    </div>
+  </div>
+
+  <div id="hint">WASD para andar • mouse para olhar • aproxime-se dos pontos luminosos</div>
+  <div id="hud">
+    <div id="hudTitle"></div>
+    <div id="hudText"></div>
+  </div>
+
+  <a-scene
+    renderer="antialias: true; colorManagement: true"
+    fog="type: exponential; color: #91a891; density: 0.018"
+    vr-mode-ui="enabled: true"
+    loading-screen="backgroundColor: #07130c; dotsColor: #d9f99d"
+  >
+    <!-- Ambiente principal: preset forest -->
+    <a-entity environment="
+      preset: forest;
+      groundTexture: walkernoise;
+      groundColor: #35542e;
+      groundColor2: #253b25;
+      dressingAmount: 260;
+      dressingColor: #234725;
+      skyColor: #9ec4a4;
+      horizonColor: #d9e6c3;
+      fog: 0.8;
+      lighting: distant;
+      lightPosition: -1 3 2;
+      seed: 7">
+    </a-entity>
+
+    <!-- Luz de preenchimento -->
+    <a-light type="ambient" intensity="0.55" color="#d8f1d5"></a-light>
+
+    <!-- Jogador -->
+    <a-entity id="rig" position="0 0 8">
+      <a-entity id="player"
+        camera
+        position="0 1.65 0"
+        look-controls
+        wasd-controls="acceleration: 28">
+        <a-cursor
+          fuse="false"
+          raycaster="objects: .clickable"
+          color="#d9f99d">
+        </a-cursor>
+      </a-entity>
+    </a-entity>
+
+    <!-- Portal / título -->
+    <a-entity position="0 1.4 2"
+      proximity-info="
+        title: Início da jornada;
+        text: Conteúdo multiplataforma não é apenas repetir a mesma obra em telas diferentes. É projetar uma experiência em que cada meio contribui com uma parte própria da narrativa.;
+        distance: 3.3">
+      <a-ring radius-inner="1.1" radius-outer="1.22" color="#d9f99d"
+        animation="property: rotation; to: 0 360 0; dur: 9000; loop: true; easing: linear"></a-ring>
+      <a-text value="PRODUCAO MULTIPLATAFORMA" align="center" color="#ffffff"
+        width="5" position="0 1.65 0.02"></a-text>
+    </a-entity>
+
+    <!-- OBJETO 1: Smartphone -->
+    <a-entity position="-5 1 -2"
+      proximity-info="
+        title: Dispositivo móvel;
+        text: O celular favorece conteúdos curtos, verticais, interativos e contextuais. Ele pode funcionar como porta de entrada, segunda tela ou extensão narrativa.;
+        distance: 3.2">
+      <a-box class="clickable" pulse-on-click width="1.15" height="2.15" depth="0.12" color="#16181b" position="0 0.3 0"></a-box>
+      <a-plane width="0.92" height="1.72" color="#4c86a8" position="0 0.35 -0.07"></a-plane>
+      <a-sphere radius="0.10" color="#d9f99d" position="0 -0.62 -0.08"></a-sphere>
+      <a-text value="MOBILE" align="center" width="4" position="0 1.75 0" color="#d9f99d"></a-text>
+    </a-entity>
+
+    <!-- OBJETO 2: Cinema / Tela grande -->
+    <a-entity position="5 1 -4"
+      proximity-info="
+        title: Tela cinematográfica;
+        text: A tela grande privilegia imersão coletiva, escala visual, continuidade dramática e concentração. Em um projeto multiplataforma, ela pode carregar o núcleo emocional da experiência.;
+        distance: 3.5">
+      <a-box width="3.4" height="2" depth="0.15" color="#252525"></a-box>
+      <a-plane width="3.05" height="1.65" color="#b7c9e2" position="0 0 -0.09"></a-plane>
+      <a-text value="TELA PRINCIPAL" align="center" width="5" position="0 1.35 0" color="#ffffff"></a-text>
+    </a-entity>
+
+    <!-- OBJETO 3: Podcast / áudio -->
+    <a-entity position="-4 1 -9"
+      proximity-info="
+        title: Podcast e áudio;
+        text: O áudio libera a imaginação e acompanha o usuário em movimento. Pode aprofundar personagens, bastidores, universos ficcionais e perspectivas que não cabem no audiovisual principal.;
+        distance: 3.1">
+      <a-cylinder height="1.25" radius="0.38" color="#30343a" position="0 0.1 0"></a-cylinder>
+      <a-torus radius="0.65" radius-tubular="0.08" color="#d9f99d" rotation="90 0 0"></a-torus>
+      <a-text value="AUDIO" align="center" width="4" position="0 1.4 0" color="#ffffff"></a-text>
+    </a-entity>
+
+    <!-- OBJETO 4: Dados / analytics -->
+    <a-entity position="4.5 1 -10"
+      proximity-info="
+        title: Dados e audiência;
+        text: Uma estratégia multiplataforma também observa o percurso do público. Métricas ajudam a entender onde a audiência entra, permanece, abandona, compartilha e retorna.;
+        distance: 3.2">
+      <a-box width="2.8" height="1.5" depth="0.18" color="#20322c"></a-box>
+      <a-box width="0.3" height="0.5" depth="0.2" color="#b7e4c7" position="-0.8 -0.3 -0.12"></a-box>
+      <a-box width="0.3" height="0.9" depth="0.2" color="#95d5b2" position="-0.25 -0.1 -0.12"></a-box>
+      <a-box width="0.3" height="1.15" depth="0.2" color="#74c69d" position="0.3 0.03 -0.12"></a-box>
+      <a-box width="0.3" height="0.7" depth="0.2" color="#52b788" position="0.85 -0.2 -0.12"></a-box>
+      <a-text value="AUDIENCIA" align="center" width="4" position="0 1.2 0" color="#ffffff"></a-text>
+    </a-entity>
+
+    <!-- OBJETO 5: XR -->
+    <a-entity position="0 1 -15"
+      proximity-info="
+        title: Realidade estendida;
+        text: Em XR, o público deixa de ser apenas espectador e passa a ocupar o espaço narrativo. A questão central muda de enquadramento para presença, agência e orientação.;
+        distance: 3.5">
+      <a-torus class="clickable" pulse-on-click radius="1.05" radius-tubular="0.12"
+        color="#9bf6ff" animation="property: rotation; to: 0 360 360; dur: 6500; loop: true; easing: linear"></a-torus>
+      <a-octahedron radius="0.65" color="#6c63ff"
+        animation="property: rotation; to: 360 360 0; dur: 8000; loop: true; easing: linear"></a-octahedron>
+      <a-text value="XR / IMERSAO" align="center" width="4.5" position="0 1.75 0" color="#ffffff"></a-text>
+    </a-entity>
+
+    <!-- NPC 1: Roteirista -->
+    <a-entity position="-7 0 -14"
+      npc-breathe
+      proximity-info="
+        title: NPC — Roteirista;
+        text: Eu penso na arquitetura narrativa. Minha pergunta é: o que cada plataforma revela de maneira única? Se tudo puder ser contado em um único meio, talvez ainda não exista uma estratégia multiplataforma.;
+        distance: 3.2">
+      <a-sphere radius="0.32" color="#d8a47f" position="0 1.75 0"></a-sphere>
+      <a-cylinder radius="0.42" height="1.25" color="#7b2cbf" position="0 0.9 0"></a-cylinder>
+      <a-cylinder radius="0.12" height="0.9" color="#d8a47f" position="-0.47 1.0 0" rotation="0 0 12"></a-cylinder>
+      <a-cylinder radius="0.12" height="0.9" color="#d8a47f" position="0.47 1.0 0" rotation="0 0 -12"></a-cylinder>
+      <a-text value="ROTEIRISTA" align="center" width="3.5" position="0 2.35 0" color="#ffffff"></a-text>
+    </a-entity>
+
+    <!-- NPC 2: Produtora -->
+    <a-entity position="7 0 -16"
+      npc-breathe
+      proximity-info="
+        title: NPC — Produtora;
+        text: Eu transformo a ideia em fluxo de produção. Preciso pensar em orçamento, calendário, formatos, direitos, entregas e reaproveitamento de materiais entre plataformas.;
+        distance: 3.2">
+      <a-sphere radius="0.32" color="#b5835a" position="0 1.75 0"></a-sphere>
+      <a-cylinder radius="0.42" height="1.25" color="#1d3557" position="0 0.9 0"></a-cylinder>
+      <a-box width="0.75" height="0.06" depth="0.55" color="#d9f99d" position="0 1.25 -0.45" rotation="-22 0 0"></a-box>
+      <a-text value="PRODUTORA" align="center" width="3.5" position="0 2.35 0" color="#ffffff"></a-text>
+    </a-entity>
+
+    <!-- NPC 3: Designer de experiência -->
+    <a-entity position="-3 0 -20"
+      npc-breathe
+      proximity-info="
+        title: NPC — Designer de experiência;
+        text: Eu desenho o caminho do público. Entre uma plataforma e outra deve existir um motivo claro para continuar. A transição precisa ser simples, desejável e recompensadora.;
+        distance: 3.2">
+      <a-sphere radius="0.32" color="#8d5524" position="0 1.75 0"></a-sphere>
+      <a-cylinder radius="0.42" height="1.25" color="#2a9d8f" position="0 0.9 0"></a-cylinder>
+      <a-torus radius="0.38" radius-tubular="0.06" color="#fff" position="0 1.0 -0.44"></a-torus>
+      <a-text value="UX / EXPERIENCIA" align="center" width="3.8" position="0 2.35 0" color="#ffffff"></a-text>
+    </a-entity>
+
+    <!-- Estação final -->
+    <a-entity position="3.5 1 -23"
+      proximity-info="
+        title: Síntese;
+        text: Produzir conteúdo multiplataforma é desenhar relações entre meios. A narrativa, a experiência, a tecnologia, a produção e a audiência precisam formar um sistema coerente.;
+        distance: 3.8">
+      <a-dodecahedron radius="1.15" color="#ffd166"
+        animation="property: rotation; to: 360 720 360; dur: 15000; loop: true; easing: linear"></a-dodecahedron>
+      <a-text value="SISTEMA MULTIPLATAFORMA" align="center" width="5.5" position="0 1.9 0" color="#ffffff"></a-text>
+    </a-entity>
+
+    <!-- Trilha visual de marcadores -->
+    <a-entity>
+      <a-cylinder position="0 0.08 0" radius="0.14" height="0.08" color="#d9f99d"></a-cylinder>
+      <a-cylinder position="-1 0.08 -3" radius="0.12" height="0.08" color="#d9f99d"></a-cylinder>
+      <a-cylinder position="1 0.08 -6" radius="0.12" height="0.08" color="#d9f99d"></a-cylinder>
+      <a-cylinder position="-1 0.08 -9" radius="0.12" height="0.08" color="#d9f99d"></a-cylinder>
+      <a-cylinder position="0 0.08 -12" radius="0.12" height="0.08" color="#d9f99d"></a-cylinder>
+      <a-cylinder position="0 0.08 -16" radius="0.12" height="0.08" color="#d9f99d"></a-cylinder>
+      <a-cylinder position="-1 0.08 -20" radius="0.12" height="0.08" color="#d9f99d"></a-cylinder>
+    </a-entity>
+  </a-scene>
+</body>
+</html>
